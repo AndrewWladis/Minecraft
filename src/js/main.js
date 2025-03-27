@@ -14,8 +14,96 @@ class MinecraftGame {
         this.player = null;
         this.blocks = new Map();
         this.textureLoader = new THREE.TextureLoader();
+        this.blockTextures = {};
         
+        this.loadTextures();
         this.init();
+    }
+
+    loadTextures() {
+        // Create basic textures using data URLs
+        const createTexture = (color, borderColor = null) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 16;
+            canvas.height = 16;
+            const ctx = canvas.getContext('2d');
+            
+            // Fill background
+            ctx.fillStyle = color;
+            ctx.fillRect(0, 0, 16, 16);
+            
+            // Add noise for texture
+            ctx.fillStyle = 'rgba(0,0,0,0.1)';
+            for (let i = 0; i < 32; i++) {
+                const x = Math.random() * 16;
+                const y = Math.random() * 16;
+                ctx.fillRect(x, y, 1, 1);
+            }
+
+            // Add border if specified
+            if (borderColor) {
+                ctx.strokeStyle = borderColor;
+                ctx.lineWidth = 1;
+                ctx.strokeRect(0, 0, 16, 16);
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.magFilter = THREE.NearestFilter;
+            texture.minFilter = THREE.NearestFilter;
+            return texture;
+        };
+
+        // Create textures for each block type
+        this.blockTextures = {
+            dirt: createTexture('#8B4513'),
+            grass_side: createTexture('#8B4513', '#228B22'),
+            grass_top: createTexture('#228B22'),
+            stone: createTexture('#808080'),
+            sand: createTexture('#F4A460'),
+            water: (() => {
+                const texture = createTexture('#0077BE');
+                texture.transparent = true;
+                return texture;
+            })()
+        };
+    }
+
+    getBlockMaterial(height) {
+        if (height < 0) {
+            // Water block
+            return new THREE.MeshPhongMaterial({
+                map: this.blockTextures.water,
+                transparent: true,
+                opacity: 0.6
+            });
+        }
+        if (height === 0) {
+            // Sand block
+            return new THREE.MeshPhongMaterial({
+                map: this.blockTextures.sand
+            });
+        }
+        if (height < 3) {
+            // Grass block with different textures for top, sides, and bottom
+            return [
+                new THREE.MeshPhongMaterial({ map: this.blockTextures.grass_side }), // right
+                new THREE.MeshPhongMaterial({ map: this.blockTextures.grass_side }), // left
+                new THREE.MeshPhongMaterial({ map: this.blockTextures.grass_top }), // top
+                new THREE.MeshPhongMaterial({ map: this.blockTextures.dirt }), // bottom
+                new THREE.MeshPhongMaterial({ map: this.blockTextures.grass_side }), // front
+                new THREE.MeshPhongMaterial({ map: this.blockTextures.grass_side }) // back
+            ];
+        }
+        if (height < 6) {
+            // Dirt block
+            return new THREE.MeshPhongMaterial({
+                map: this.blockTextures.dirt
+            });
+        }
+        // Stone block
+        return new THREE.MeshPhongMaterial({
+            map: this.blockTextures.stone
+        });
     }
 
     init() {
@@ -87,10 +175,7 @@ class MinecraftGame {
                 
                 // Create block
                 const geometry = new THREE.BoxGeometry(1, 1, 1);
-                const material = new THREE.MeshPhongMaterial({ 
-                    color: this.getBlockColor(y),
-                    shadowSide: THREE.FrontSide
-                });
+                const material = this.getBlockMaterial(y);
                 const block = new THREE.Mesh(geometry, material);
                 
                 block.position.set(x, y, z);
@@ -103,14 +188,6 @@ class MinecraftGame {
                 this.blocks.set(key, block);
             }
         }
-    }
-
-    getBlockColor(height) {
-        if (height < 0) return 0x3366ff; // Water
-        if (height === 0) return 0xc2b280; // Sand
-        if (height < 3) return 0x567d46; // Grass
-        if (height < 6) return 0x8b4513; // Dirt
-        return 0x808080; // Stone
     }
 
     animate() {
