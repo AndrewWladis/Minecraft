@@ -1,0 +1,55 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    overflow: hidden;
+}
+
+#game-container {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+}
+
+#crosshair {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 24px;
+    pointer-events: none;
+    user-select: none;
+}
+
+#inventory {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 4px;
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 4px;
+}
+
+#health-bar, #hunger-bar {
+    position: fixed;
+    bottom: 60px;
+    height: 20px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 4px;
+    padding: 4px;
+}
+
+#health-bar {
+    left: 20px;
+}
+
+#hunger-bar {
+    right: 20px;
+} 
