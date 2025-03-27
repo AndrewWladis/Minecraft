@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls';
+import { createNoise2D } from 'simplex-noise';
 import { Player } from './Player';
 
 class MinecraftGame {
@@ -15,14 +16,14 @@ class MinecraftGame {
         this.blocks = new Map();
         this.textureLoader = new THREE.TextureLoader();
         this.blockTextures = {};
+        this.noise2D = createNoise2D();
         
         this.loadTextures();
         this.init();
     }
 
     loadTextures() {
-        // Create basic textures using data URLs
-        const createTexture = (color, borderColor = null) => {
+        const createTexture = (color, borderColor = null, pattern = null) => {
             const canvas = document.createElement('canvas');
             canvas.width = 16;
             canvas.height = 16;
@@ -32,12 +33,26 @@ class MinecraftGame {
             ctx.fillStyle = color;
             ctx.fillRect(0, 0, 16, 16);
             
-            // Add noise for texture
-            ctx.fillStyle = 'rgba(0,0,0,0.1)';
-            for (let i = 0; i < 32; i++) {
-                const x = Math.random() * 16;
-                const y = Math.random() * 16;
-                ctx.fillRect(x, y, 1, 1);
+            // Add pattern if specified
+            if (pattern === 'wood') {
+                ctx.fillStyle = '#4a3728';
+                ctx.fillRect(2, 0, 2, 16);
+                ctx.fillRect(9, 0, 2, 16);
+            } else if (pattern === 'leaves') {
+                ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                for (let i = 0; i < 8; i++) {
+                    const x = Math.random() * 16;
+                    const y = Math.random() * 16;
+                    ctx.fillRect(x, y, 2, 2);
+                }
+            } else {
+                // Add noise for texture
+                ctx.fillStyle = 'rgba(0,0,0,0.1)';
+                for (let i = 0; i < 32; i++) {
+                    const x = Math.random() * 16;
+                    const y = Math.random() * 16;
+                    ctx.fillRect(x, y, 1, 1);
+                }
             }
 
             // Add border if specified
@@ -53,7 +68,6 @@ class MinecraftGame {
             return texture;
         };
 
-        // Create textures for each block type
         this.blockTextures = {
             dirt: createTexture('#8B4513'),
             grass_side: createTexture('#8B4513', '#228B22'),
@@ -64,27 +78,46 @@ class MinecraftGame {
                 const texture = createTexture('#0077BE');
                 texture.transparent = true;
                 return texture;
-            })()
+            })(),
+            snow: createTexture('#FFFFFF'),
+            wood: createTexture('#8B4513', null, 'wood'),
+            leaves: createTexture('#228B22', null, 'leaves')
         };
     }
 
-    getBlockMaterial(height) {
-        if (height < 0) {
-            // Water block
+    getBiome(x, z) {
+        const scale = 0.02;
+        const temperature = this.noise2D(x * scale, z * scale);
+        const moisture = this.noise2D((x + 1000) * scale, (z + 1000) * scale);
+        
+        if (temperature < -0.3) return 'snow';
+        if (temperature > 0.3 && moisture < -0.2) return 'desert';
+        if (moisture > 0.3) return 'forest';
+        return 'plains';
+    }
+
+    getBlockMaterial(height, y, biome) {
+        // Water
+        if (y < 0) {
             return new THREE.MeshPhongMaterial({
                 map: this.blockTextures.water,
                 transparent: true,
                 opacity: 0.6
             });
         }
-        if (height === 0) {
-            // Sand block
-            return new THREE.MeshPhongMaterial({
-                map: this.blockTextures.sand
-            });
+
+        // Snow biome
+        if (biome === 'snow' && y === height) {
+            return new THREE.MeshPhongMaterial({ map: this.blockTextures.snow });
         }
-        if (height < 3) {
-            // Grass block with different textures for top, sides, and bottom
+
+        // Desert biome
+        if (biome === 'desert' && y >= height - 3) {
+            return new THREE.MeshPhongMaterial({ map: this.blockTextures.sand });
+        }
+
+        // Surface blocks
+        if (y === height) {
             return [
                 new THREE.MeshPhongMaterial({ map: this.blockTextures.grass_side }), // right
                 new THREE.MeshPhongMaterial({ map: this.blockTextures.grass_side }), // left
@@ -94,16 +127,53 @@ class MinecraftGame {
                 new THREE.MeshPhongMaterial({ map: this.blockTextures.grass_side }) // back
             ];
         }
-        if (height < 6) {
-            // Dirt block
-            return new THREE.MeshPhongMaterial({
-                map: this.blockTextures.dirt
-            });
+
+        // Dirt layer
+        if (y >= height - 3) {
+            return new THREE.MeshPhongMaterial({ map: this.blockTextures.dirt });
         }
-        // Stone block
-        return new THREE.MeshPhongMaterial({
-            map: this.blockTextures.stone
-        });
+
+        // Stone
+        return new THREE.MeshPhongMaterial({ map: this.blockTextures.stone });
+    }
+
+    createTree(x, y, z) {
+        const height = 5 + Math.floor(Math.random() * 3);
+        
+        // Create trunk
+        for (let i = 0; i < height; i++) {
+            const geometry = new THREE.BoxGeometry(1, 1, 1);
+            const material = new THREE.MeshPhongMaterial({ map: this.blockTextures.wood });
+            const block = new THREE.Mesh(geometry, material);
+            block.position.set(x, y + i, z);
+            block.castShadow = true;
+            block.receiveShadow = true;
+            this.scene.add(block);
+            this.blocks.set(`${x},${y + i},${z}`, block);
+        }
+
+        // Create leaves
+        for (let ox = -2; ox <= 2; ox++) {
+            for (let oy = -2; oy <= 2; oy++) {
+                for (let oz = -2; oz <= 2; oz++) {
+                    if (Math.abs(ox) + Math.abs(oy) + Math.abs(oz) <= 3) {
+                        const leafY = y + height - 2 + oy;
+                        const geometry = new THREE.BoxGeometry(1, 1, 1);
+                        const material = new THREE.MeshPhongMaterial({
+                            map: this.blockTextures.leaves,
+                            transparent: true,
+                            alphaTest: 0.5
+                        });
+                        const block = new THREE.Mesh(geometry, material);
+                        block.position.set(x + ox, leafY, z + oz);
+                        block.castShadow = true;
+                        block.receiveShadow = true;
+                        this.scene.add(block);
+                        this.blocks.set(`${x + ox},${leafY},${z + oz}`, block);
+                    }
+                }
+            }
+        }
     }
 
     init() {
@@ -161,31 +231,43 @@ class MinecraftGame {
     }
 
     generateTerrain() {
-        const size = 50; // Size of the world
-        const height = 10; // Maximum height of terrain
+        const size = 50;
+        const waterLevel = -2;
 
-        // Create ground plane
         for (let x = -size; x < size; x++) {
             for (let z = -size; z < size; z++) {
-                // Simple height generation using Perlin-like noise
-                const y = Math.floor(
-                    (Math.sin(x * 0.1) * Math.cos(z * 0.1) + 
-                    Math.sin(x * 0.05) * Math.cos(z * 0.05)) * height
-                );
+                const biome = this.getBiome(x, z);
                 
-                // Create block
-                const geometry = new THREE.BoxGeometry(1, 1, 1);
-                const material = this.getBlockMaterial(y);
-                const block = new THREE.Mesh(geometry, material);
-                
-                block.position.set(x, y, z);
-                block.castShadow = true;
-                block.receiveShadow = true;
-                this.scene.add(block);
-                
-                // Store block reference
-                const key = `${x},${y},${z}`;
-                this.blocks.set(key, block);
+                // Generate base terrain height
+                const baseHeight = this.noise2D(x * 0.05, z * 0.05) * 10;
+                const roughness = this.noise2D((x + 1000) * 0.1, (z + 1000) * 0.1) * 5;
+                let height = Math.floor(baseHeight + roughness);
+
+                // Adjust height based on biome
+                if (biome === 'snow') height += 5;
+                if (biome === 'desert') height = Math.min(height, 3);
+
+                // Generate terrain column
+                for (let y = waterLevel; y <= height; y++) {
+                    const geometry = new THREE.BoxGeometry(1, 1, 1);
+                    const material = this.getBlockMaterial(height, y, biome);
+                    const block = new THREE.Mesh(geometry, material);
+                    
+                    block.position.set(x, y, z);
+                    block.castShadow = true;
+                    block.receiveShadow = true;
+                    this.scene.add(block);
+                    
+                    const key = `${x},${y},${z}`;
+                    this.blocks.set(key, block);
+                }
+
+                // Add trees in forest biome
+                if (biome === 'forest' && height > waterLevel) {
+                    if (Math.random() < 0.05) { // 5% chance for a tree
+                        this.createTree(x, height + 1, z);
+                    }
+                }
             }
         }
     }
