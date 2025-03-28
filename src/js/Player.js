@@ -14,7 +14,103 @@ export class Player {
         this.canJump = true;
         this.size = new THREE.Vector3(0.6, 1.8, 0.6); // Player hitbox size
         
+        // Block breaking
+        this.raycaster = new THREE.Raycaster();
+        this.mouse = new THREE.Vector2(0, 0); // Center of screen
+        this.maxReach = 5; // Maximum distance to break blocks
+        this.selectedBlock = null;
+        this.blockOutline = null;
+        this.isBreaking = false;
+        this.breakingProgress = 0;
+        this.breakingTime = 200; // Reduced from 500ms to 100ms
+        this.breakingStart = 0;
+        
         this.setupControls();
+        this.createBlockOutline();
+    }
+
+    createBlockOutline() {
+        // Create wireframe cube for block selection
+        const geometry = new THREE.BoxGeometry(1.001, 1.001, 1.001);
+        const material = new THREE.LineBasicMaterial({ color: 0xffffff });
+        const edges = new THREE.EdgesGeometry(geometry);
+        this.blockOutline = new THREE.LineSegments(edges, material);
+        this.blockOutline.visible = false;
+        window.game.scene.add(this.blockOutline);
+    }
+
+    updateBlockSelection() {
+        // Update raycaster
+        this.raycaster.setFromCamera(this.mouse, this.camera);
+        
+        // Get all meshes in the scene
+        const meshes = [];
+        window.game.blocks.forEach(block => {
+            if (block.visible) {
+                meshes.push(block);
+            }
+        });
+
+        // Get break progress elements
+        const breakProgress = document.getElementById('break-progress');
+        const breakProgressFill = document.getElementById('break-progress-fill');
+
+        // Check for intersections
+        const intersects = this.raycaster.intersectObjects(meshes);
+        
+        if (intersects.length > 0 && intersects[0].distance <= this.maxReach) {
+            const intersection = intersects[0];
+            this.selectedBlock = intersection.object;
+            
+            // Update outline position
+            const pos = this.selectedBlock.position;
+            this.blockOutline.position.set(pos.x, pos.y, pos.z);
+            this.blockOutline.visible = true;
+
+            // Handle block breaking
+            if (this.isBreaking) {
+                const now = Date.now();
+                const elapsedTime = now - this.breakingStart;
+                
+                // Update break progress UI
+                breakProgress.style.display = 'block';
+                const progress = Math.min((elapsedTime / this.breakingTime) * 100, 100);
+                breakProgressFill.style.width = `${progress}%`;
+                
+                if (elapsedTime >= this.breakingTime) {
+                    this.breakBlock();
+                    this.isBreaking = false;
+                    this.breakingProgress = 0;
+                    breakProgress.style.display = 'none';
+                    breakProgressFill.style.width = '0%';
+                }
+            } else {
+                breakProgress.style.display = 'none';
+                breakProgressFill.style.width = '0%';
+            }
+        } else {
+            this.selectedBlock = null;
+            this.blockOutline.visible = false;
+            this.isBreaking = false;
+            this.breakingProgress = 0;
+            breakProgress.style.display = 'none';
+            breakProgressFill.style.width = '0%';
+        }
+    }
+
+    breakBlock() {
+        if (this.selectedBlock) {
+            const pos = this.selectedBlock.position;
+            const key = `${pos.x},${pos.y},${pos.z}`;
+            
+            // Remove the block
+            window.game.scene.remove(this.selectedBlock);
+            window.game.blocks.delete(key);
+            
+            // Hide outline
+            this.blockOutline.visible = false;
+            this.selectedBlock = null;
+        }
     }
 
     setupControls() {
@@ -65,10 +161,26 @@ export class Player {
                     break;
             }
         });
+
+        // Add mouse events for block breaking
+        document.addEventListener('mousedown', (event) => {
+            if (event.button === 0 && this.controls.isLocked) { // Left click
+                this.isBreaking = true;
+                this.breakingStart = Date.now();
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            this.isBreaking = false;
+            this.breakingProgress = 0;
+        });
     }
 
     update() {
         if (this.controls.isLocked) {
+            // Update block selection
+            this.updateBlockSelection();
+
             // Apply gravity
             this.velocity.y -= 0.1;
 
