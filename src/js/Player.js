@@ -134,7 +134,7 @@ export class Player {
                     break;
                 case 'Space':
                     if (this.canJump) {
-                        this.velocity.y += 5;
+                        this.velocity.y += 2.5;
                         this.canJump = false;
                     }
                     break;

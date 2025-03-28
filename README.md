@@ -31,7 +31,6 @@ A basic Minecraft-style game built with Three.js, featuring procedural terrain g
 - WASD / Arrow keys for movement
 - Mouse for looking around
 - Space bar for jumping
-- Click to lock/unlock mouse pointer
 - Collision detection with blocks
 
 ### Graphics
